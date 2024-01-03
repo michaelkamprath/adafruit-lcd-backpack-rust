@@ -32,6 +32,13 @@ const LCD_CMD_FUNCTIONSET: u8 = 0x20; //  Used to send the function to set to th
 const LCD_CMD_SETCGRAMADDR: u8 = 0x40; //  Used to set the CGRAM (character generator RAM) with characters
 const LCD_CMD_SETDDRAMADDR: u8 = 0x80; //  Used to set the DDRAM (Display Data RAM)
 
+// flags for display entry mode
+const LCD_FLAG_ENTRYRIGHT: u8 = 0x00;//  Used to set text to flow from right to left
+const LCD_FLAG_ENTRYLEFT: u8 = 0x02; //  Uset to set text to flow from left to right
+const LCD_FLAG_ENTRYSHIFTINCREMENT: u8 = 0x01; //  Used to 'right justify' text from the cursor
+const LCD_FLAG_ENTRYSHIFTDECREMENT: u8 = 0x00; //  Used to 'left justify' text from the cursor
+
+
 // flags for display on/off control
 const LCD_FLAG_DISPLAYON: u8 = 0x04; //  Turns the display on
 const LCD_FLAG_DISPLAYOFF: u8 = 0x00; //  Turns the display off
@@ -103,7 +110,7 @@ where
         Self {
             register,
             delay: delay.clone(),
-            display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_1LINE,
+            display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
         }
     }
 
@@ -141,6 +148,14 @@ where
 
         self.send_command(LCD_CMD_FUNCTIONSET | self.display_function)?;
 
+        self.send_command(LCD_CMD_DISPLAYCONTROL |  LCD_FLAG_DISPLAYON | LCD_FLAG_CURSORON | LCD_FLAG_BLINKOFF)?;
+
+        self.clear_display()?;
+
+        self.send_command(LCD_CMD_ENTRYMODESET | LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT)?;
+
+        self.home()?;
+
         Ok(())
     }
 
@@ -158,7 +173,7 @@ where
 
     pub fn set_cursor(&mut self, col: u8, row: u8) -> Result<(), Error<I2C_ERR>> {
         let row_offsets = [0x00, 0x40, 0x10, 0x50]; // TODO: make this configurable
-        if row > 1 {
+        if row > row_offsets.len() as u8 {
             return Err(Error::RowOutOfRange);
         }
         self.send_command(LCD_CMD_SETDDRAMADDR | (col + row_offsets[row as usize]))?;
@@ -173,7 +188,7 @@ where
         // set bit 0, data pin 4
         for (index, pin) in DATA_PINS.iter().enumerate() {
             let bit_mask = 1 << (*pin as u8);
-            register_contents ^= bit_mask;
+            register_contents &= !bit_mask;
             if value & (1 << index) != 0 {
                 register_contents |= bit_mask;
             }
@@ -229,6 +244,15 @@ where
         self.register.set_gpio(ENABLE_PIN, Level::Low)?;
         self.delay.borrow_mut().delay_us(100);
 
+        Ok(())
+    }
+
+    // ------------------ high level commands ---------------------
+
+    pub fn print(&mut self, text: &str) -> Result<(), Error<I2C_ERR>> {
+        for c in text.chars() {
+            self.write_data(c as u8)?;
+        }
         Ok(())
     }
 }
