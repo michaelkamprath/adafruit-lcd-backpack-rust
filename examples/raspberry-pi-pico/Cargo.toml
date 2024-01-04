@@ -1,0 +1,38 @@
+[package]
+name = "lcd-backpack-example"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "lcd-backpack-example"
+test = false
+bench = false
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+embedded-hal = { version = "0.2", features = ["unproven"] }
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+rp-pico = "0.8"
+embedded-alloc = "0.5"
+defmt = "0.3"
+defmt-rtt = "0.4"
+adafruit-lcd-backpack = { git = "https://github.com/michaelkamprath/adafruit-lcd-backpack-rust.git" }
+
+[profile.dev]
+codegen-units = 1
+debug = 2
+debug-assertions = true
+incremental = false
+opt-level = 3
+overflow-checks = true
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 3
+overflow-checks = false
