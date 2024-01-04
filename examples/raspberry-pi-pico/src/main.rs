@@ -1,12 +1,11 @@
 #![no_std]
 #![no_main]
-use alloc::rc::Rc;
 use rp_pico::entry;
 use rp_pico::hal::{
     prelude::*, fugit::HertzU32, gpio
 };
 use adafruit_lcd_backpack::{LcdBackpack, Error};
-use core::{cell::RefCell, fmt::Write};
+use core::fmt::Write;
 use embedded_hal::{
     blocking::delay::{DelayMs, DelayUs},
     blocking::i2c,
@@ -14,22 +13,9 @@ use embedded_hal::{
 use panic_probe as _;
 use defmt_rtt as _;
 
-extern crate alloc;
-use embedded_alloc::Heap;
-
-#[global_allocator]
-static HEAP: Heap = Heap::empty();
 
 #[entry]
 fn main() -> ! {
-    // Initialize the allocator BEFORE you use it
-    {
-        use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 4048;
-        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
-    }
-
     // Grab our singleton objects
     let mut pac = rp_pico::hal::pac::Peripherals::take().unwrap();
     let core = rp_pico::hal::pac::CorePeripherals::take().unwrap();
@@ -64,33 +50,33 @@ fn main() -> ! {
 
     // The delay object lets us wait for specified amounts of time. Wrap it in a
     // RefCell so we can share it between the main loop and other functions.
-    let mut delay_shared = Rc::new(RefCell::new(cortex_m::delay::Delay::new(
+    let delay = cortex_m::delay::Delay::new(
         core.SYST,
         clocks.system_clock.freq().to_Hz(),
-    )));
+    );
 
     // set up I2C. Also wrap it in a RefCell so we can share it between the main loop and other functions.
-    let i2c_shared =  Rc::new(RefCell::new(rp_pico::hal::I2C::new_controller(
+    let i2c =  rp_pico::hal::I2C::new_controller(
         pac.I2C0,
         pins.gpio4.into_function::<gpio::FunctionI2c>(),
         pins.gpio5.into_function::<gpio::FunctionI2c>(),
         HertzU32::from_raw(400_000),
         &mut pac.RESETS,
         clocks.system_clock.freq(),
-    )));
+    );
 
     // create the LEA backpack object
-    let mut lcd_backpack = LcdBackpack::new(&i2c_shared, &delay_shared);
+    let mut lcd_backpack = LcdBackpack::new(i2c, delay);
 
     loop {
-        if let Err(_e) = write_lcd_sequence(&mut lcd_backpack, &mut delay_shared) {
+        if let Err(_e) = write_lcd_sequence(&mut lcd_backpack) {
             panic!("Error writing to LCD");
         }
     }
 }
 
 #[allow(non_camel_case_types)]
-fn write_lcd_sequence<TWI, TWI_ERR, DELAY>(lcd: &mut LcdBackpack<TWI, DELAY>, delay: &Rc<RefCell<DELAY>>) -> Result<(), Error<TWI_ERR>>
+fn write_lcd_sequence<TWI, TWI_ERR, DELAY>(lcd: &mut LcdBackpack<TWI, DELAY>) -> Result<(), Error<TWI_ERR>>
 where
     TWI: i2c::Write<Error = TWI_ERR> + i2c::WriteRead<Error = TWI_ERR>,
     DELAY: DelayMs<u16> + DelayUs<u16> + DelayMs<u8>,
@@ -98,14 +84,14 @@ where
     // clear the display;
     write!(lcd.clear()?.home()?, "Hello, world!").expect("Error writing to LCD");
     // wait 1 second
-    delay.borrow_mut().delay_ms(2000u16);
+    lcd.delay().delay_ms(2000u16);
     // clear the display
     write!(lcd.set_cursor(0,1)?, "I'm LCD Backpack").expect("Error writing to LCD");
     // wait 1 second
-    delay.borrow_mut().delay_ms(2000u16);
+    lcd.delay().delay_ms(2000u16);
     // clear the display
     lcd.clear()?;
-    delay.borrow_mut().delay_ms(500u16);
+    lcd.delay().delay_ms(500u16);
 
     Ok(())
 }
