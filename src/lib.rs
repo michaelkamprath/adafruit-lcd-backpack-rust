@@ -1,9 +1,12 @@
 #![no_std]
 #![allow(dead_code, non_camel_case_types, non_upper_case_globals)]
 
+#[cfg(shared_i2c)]
 extern crate alloc;
 
+#[cfg(shared_i2c)]
 use alloc::rc::Rc;
+#[cfg(shared_i2c)]
 use core::cell::RefCell;
 use embedded_hal::{
     blocking::delay::{DelayMs, DelayUs},
@@ -62,8 +65,14 @@ const LCD_FLAG_5x10_DOTS: u8 = 0x04; //  10 pixel high font mode
 const LCD_FLAG_5x8_DOTS: u8 = 0x00; //  8 pixel high font mode
 
 pub struct LcdBackpack<I2C, D> {
+    #[cfg(shared_i2c)]
     register: Mcp230xx<I2C, Mcp23008>,
+    #[cfg(not(shared_i2c))]
+    register: Mcp230xx<I2C, Mcp23008>,
+    #[cfg(shared_i2c)]
     delay: Rc<RefCell<D>>,
+    #[cfg(not(shared_i2c))]
+    delay: D,
     display_function: u8,
     display_control: u8,
     display_mode: u8,
@@ -100,11 +109,19 @@ where
     D: DelayMs<u16> + DelayUs<u16>,
 {
     /// Create a new LCD backpack with the default I2C address of 0x20
+    #[cfg(shared_i2c)]
     pub fn new(i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>) -> Self {
         Self::new_with_address(i2c, delay, 0x20)
     }
 
+    /// Create a new LCD backpack with the default I2C address of 0x20
+    #[cfg(not(shared_i2c))]
+    pub fn new(i2c: I2C, delay: D) -> Self {
+        Self::new_with_address(i2c, delay, 0x20)
+    }
+
     /// Create a new LCD backpack with the specified I2C address
+    #[cfg(shared_i2c)]
     pub fn new_with_address(i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>, address: u8) -> Self {
         let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
             Ok(r) => r,
@@ -114,6 +131,23 @@ where
         Self {
             register,
             delay: delay.clone(),
+            display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
+            display_control: LCD_FLAG_DISPLAYON | LCD_FLAG_CURSOROFF | LCD_FLAG_BLINKOFF,
+            display_mode: LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT,
+        }
+    }
+
+    /// Create a new LCD backpack with the specified I2C address
+    #[cfg(not(shared_i2c))]
+    pub fn new_with_address(i2c: I2C, delay: D, address: u8) -> Self {
+        let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
+            Ok(r) => r,
+            Err(_) => panic!("Could not create MCP23008"),
+        };
+
+        Self {
+            register,
+            delay,
             display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
             display_control: LCD_FLAG_DISPLAYON | LCD_FLAG_CURSOROFF | LCD_FLAG_BLINKOFF,
             display_mode: LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT,
@@ -137,7 +171,10 @@ where
         self.register.set_direction(ENABLE_PIN, Direction::Output)?;
 
         // need to wait 40ms after power rises above 2.7V before sending any commands. wait alittle longer.
+        #[cfg(shared_i2c)]
         self.delay.borrow_mut().delay_ms(50);
+        #[cfg(not(shared_i2c))]
+        self.delay.delay_ms(50);
 
         // pull RS & Enable low to start command. RW is hardwired low on backpack.
         self.register.set_gpio(RS_PIN, Level::Low)?;
@@ -145,11 +182,20 @@ where
 
         // Put LCD into 4 bit mode, device starts in 8 bit mode
         self.write_4_bits(0x03)?;
+        #[cfg(shared_i2c)]
         self.delay.borrow_mut().delay_ms(5);
+        #[cfg(not(shared_i2c))]
+        self.delay.delay_ms(5);
         self.write_4_bits(0x03)?;
+        #[cfg(shared_i2c)]
         self.delay.borrow_mut().delay_ms(5);
+        #[cfg(not(shared_i2c))]
+        self.delay.delay_ms(5);
         self.write_4_bits(0x03)?;
+        #[cfg(shared_i2c)]
         self.delay.borrow_mut().delay_us(150);
+        #[cfg(not(shared_i2c))]
+        self.delay.delay_us(150);
         self.write_4_bits(0x02)?;
 
         // set up the display
@@ -169,14 +215,20 @@ where
     /// Clear the display
     pub fn clear(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
         self.send_command(LCD_CMD_CLEARDISPLAY)?;
+        #[cfg(shared_i2c)]
         self.delay.borrow_mut().delay_ms(2);
+        #[cfg(not(shared_i2c))]
+        self.delay.delay_ms(2);
         Ok(self)
     }
 
     /// Set the cursor to the home position
     pub fn home(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
         self.send_command(LCD_CMD_RETURNHOME)?;
+        #[cfg(shared_i2c)]
         self.delay.borrow_mut().delay_ms(2);
+        #[cfg(not(shared_i2c))]
+        self.delay.delay_ms(2);
         Ok(self)
     }
 
@@ -307,15 +359,20 @@ where
             .write(Register::GPIO.into(), register_contents)?;
 
         // pulse ENABLE pin quickly using the known value of the register contents
-        self.delay.borrow_mut().delay_us(1);
+        #[cfg(shared_i2c)]
+        let delay = self.delay.borrow_mut();
+        #[cfg(not(shared_i2c))]
+        let delay = &mut self.delay;
+
+        delay.delay_us(1);
         register_contents |= 1 << (ENABLE_PIN as u8); // set enable pin high
         self.register
             .write(Register::GPIO.into(), register_contents)?;
-        self.delay.borrow_mut().delay_us(1);
+        delay.delay_us(1);
         register_contents &= !(1 << (ENABLE_PIN as u8)); // set enable pin low
         self.register
             .write(Register::GPIO.into(), register_contents)?;
-        self.delay.borrow_mut().delay_us(100);
+        delay.delay_us(100);
 
         Ok(())
     }
@@ -343,12 +400,17 @@ where
 
     /// Pulse the enable pin
     fn pulse_enable(&mut self) -> Result<(), Error<I2C_ERR>> {
+        #[cfg(shared_i2c)]
+        let delay = self.delay.borrow_mut();
+        #[cfg(not(shared_i2c))]
+        let delay = &mut self.delay;
+
         self.register.set_gpio(ENABLE_PIN, Level::Low)?;
-        self.delay.borrow_mut().delay_us(1);
+        delay.delay_us(1);
         self.register.set_gpio(ENABLE_PIN, Level::High)?;
-        self.delay.borrow_mut().delay_us(1);
+        delay.delay_us(1);
         self.register.set_gpio(ENABLE_PIN, Level::Low)?;
-        self.delay.borrow_mut().delay_us(100);
+        delay.delay_us(100);
 
         Ok(())
     }

@@ -15,8 +15,8 @@ bench = false
 
 [dependencies]
 embedded-hal = "0.2"
-mcp230xx = { git = "https://github.com/michaelkamprath/mcp230xx.git", branch = "rc_i2c", features = ["shared_i2c"]}
+mcp230xx = { git = "https://github.com/michaelkamprath/mcp230xx.git", branch = "rc_i2c"}
 
 
 [features]
-
+shared_i2c = ["mcp230xx/shared_i2c"]
