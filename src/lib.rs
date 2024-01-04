@@ -65,6 +65,8 @@ pub struct LcdBackpack<I2C, D> {
     register: Mcp230xx<I2C, Mcp23008>,
     delay: Rc<RefCell<D>>,
     display_function: u8,
+    display_control: u8,
+    display_mode: u8,
 }
 
 /// Errors that can occur when using the LCD backpack
@@ -97,10 +99,12 @@ where
     I2C: Write<Error = I2C_ERR> + WriteRead<Error = I2C_ERR>,
     D: DelayMs<u16> + DelayUs<u16>,
 {
+    /// Create a new LCD backpack with the default I2C address of 0x20
     pub fn new(i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>) -> Self {
         Self::new_with_address(i2c, delay, 0x20)
     }
 
+    /// Create a new LCD backpack with the specified I2C address
     pub fn new_with_address(i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>, address: u8) -> Self {
         let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
             Ok(r) => r,
@@ -111,11 +115,13 @@ where
             register,
             delay: delay.clone(),
             display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
+            display_control: LCD_FLAG_DISPLAYON | LCD_FLAG_CURSOROFF | LCD_FLAG_BLINKOFF,
+            display_mode: LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT,
         }
     }
 
     /// Initialize the LCD. Must be called before any other methods. Will turn on the blanked display, with no cursor or blinking.
-    pub fn init(&mut self) -> Result<(), Error<I2C_ERR>> {
+    pub fn init(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
         // set up back light
         self.register
             .set_direction(BACKLIGHT_PIN, Direction::Output)?;
@@ -146,39 +152,138 @@ where
         self.delay.borrow_mut().delay_us(150);
         self.write_4_bits(0x02)?;
 
+        // set up the display
         self.send_command(LCD_CMD_FUNCTIONSET | self.display_function)?;
-
-        self.send_command(LCD_CMD_DISPLAYCONTROL |  LCD_FLAG_DISPLAYON | LCD_FLAG_CURSORON | LCD_FLAG_BLINKOFF)?;
-
-        self.clear_display()?;
-
-        self.send_command(LCD_CMD_ENTRYMODESET | LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT)?;
-
+        self.send_command(LCD_CMD_DISPLAYCONTROL |  self.display_control)?;
+        self.send_command(LCD_CMD_ENTRYMODESET | self.display_mode)?;
+        self.clear()?;
         self.home()?;
 
-        Ok(())
+        Ok(self)
     }
 
-    pub fn clear_display(&mut self) -> Result<(), Error<I2C_ERR>> {
+    //--------------------------------------------------------------------------------------------------
+    // high level commands, for the user!
+    //--------------------------------------------------------------------------------------------------
+
+    /// Clear the display
+    pub fn clear(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
         self.send_command(LCD_CMD_CLEARDISPLAY)?;
         self.delay.borrow_mut().delay_ms(2);
-        Ok(())
+        Ok(self)
     }
 
-    pub fn home(&mut self) -> Result<(), Error<I2C_ERR>> {
+    /// Set the cursor to the home position
+    pub fn home(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
         self.send_command(LCD_CMD_RETURNHOME)?;
         self.delay.borrow_mut().delay_ms(2);
-        Ok(())
+        Ok(self)
     }
 
-    pub fn set_cursor(&mut self, col: u8, row: u8) -> Result<(), Error<I2C_ERR>> {
+    /// Set the cursor position at specified column and row
+    pub fn set_cursor(&mut self, col: u8, row: u8) -> Result<&mut Self, Error<I2C_ERR>> {
         let row_offsets = [0x00, 0x40, 0x10, 0x50]; // TODO: make this configurable
         if row > row_offsets.len() as u8 {
             return Err(Error::RowOutOfRange);
         }
         self.send_command(LCD_CMD_SETDDRAMADDR | (col + row_offsets[row as usize]))?;
-        Ok(())
+        Ok(self)
     }
+
+    /// Set the cursor visibility
+    pub fn show_cursor(&mut self, show_cursor: bool) -> Result<&mut Self, Error<I2C_ERR>> {
+        if show_cursor {
+            self.display_control |= LCD_FLAG_CURSORON;
+        } else {
+            self.display_control &= !LCD_FLAG_CURSORON;
+        }
+        self.send_command(LCD_CMD_DISPLAYCONTROL | self.display_control)?;
+        Ok(self)
+    }
+
+    /// Set the cursor blinking
+    pub fn blink_cursor(&mut self, blink_cursor: bool) -> Result<&mut Self, Error<I2C_ERR>> {
+        if blink_cursor {
+            self.display_control |= LCD_FLAG_BLINKON;
+        } else {
+            self.display_control &= !LCD_FLAG_BLINKON;
+        }
+        self.send_command(LCD_CMD_DISPLAYCONTROL | self.display_control)?;
+        Ok(self)
+    }
+
+    /// Set the display visibility
+    pub fn show_display(&mut self, show_display: bool) -> Result<&mut Self, Error<I2C_ERR>> {
+        if show_display {
+            self.display_control |= LCD_FLAG_DISPLAYON;
+        } else {
+            self.display_control &= !LCD_FLAG_DISPLAYON;
+        }
+        self.send_command(LCD_CMD_DISPLAYCONTROL | self.display_control)?;
+        Ok(self)
+    }
+
+    /// Scroll the display to the left
+    pub fn scroll_display_left(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
+        self.send_command(LCD_CMD_CURSORSHIFT | LCD_FLAG_DISPLAYMOVE | LCD_FLAG_MOVELEFT)?;
+        Ok(self)
+    }
+
+    /// Scroll the display to the right
+    pub fn scroll_display_right(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
+        self.send_command(LCD_CMD_CURSORSHIFT | LCD_FLAG_DISPLAYMOVE | LCD_FLAG_MOVERIGHT)?;
+        Ok(self)
+    }
+
+    /// Set the text flow direction to left to right
+    pub fn left_to_right(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
+        self.display_mode |= LCD_FLAG_ENTRYLEFT;
+        self.send_command(LCD_CMD_ENTRYMODESET | self.display_mode)?;
+        Ok(self)
+    }
+
+    /// Set the text flow direction to right to left
+    pub fn right_to_left(&mut self) -> Result<&mut Self, Error<I2C_ERR>> {
+        self.display_mode &= !LCD_FLAG_ENTRYLEFT;
+        self.send_command(LCD_CMD_ENTRYMODESET | self.display_mode)?;
+        Ok(self)
+    }
+
+    /// Set the auto scroll mode
+    pub fn autoscroll(&mut self, autoscroll: bool) -> Result<&mut Self, Error<I2C_ERR>> {
+        if autoscroll {
+            self.display_mode |= LCD_FLAG_ENTRYSHIFTINCREMENT;
+        } else {
+            self.display_mode &= !LCD_FLAG_ENTRYSHIFTINCREMENT;
+        }
+        self.send_command(LCD_CMD_ENTRYMODESET | self.display_mode)?;
+        Ok(self)
+    }
+
+    /// Create a new custom character
+    pub fn create_char(
+        &mut self,
+        location: u8,
+        charmap: [u8; 8],
+    ) -> Result<&mut Self, Error<I2C_ERR>> {
+        self.send_command(LCD_CMD_SETCGRAMADDR | ((location & 0x7) << 3))?;
+        for &charmap_byte in charmap.iter() {
+            self.write_data(charmap_byte)?;
+        }
+        Ok(self)
+    }
+
+    /// Prints a string to the LCD at the current cursor position
+    pub fn print(&mut self, text: &str) -> Result<&mut Self, Error<I2C_ERR>> {
+        for c in text.chars() {
+            self.write_data(c as u8)?;
+        }
+        Ok(self)
+    }
+
+    //--------------------------------------------------------------------------------------------------
+    // Internal data writing functions
+    //--------------------------------------------------------------------------------------------------
 
     /// Write 4 bits to the LCD
     fn write_4_bits(&mut self, value: u8) -> Result<(), Error<I2C_ERR>> {
@@ -236,6 +341,7 @@ where
         Ok(())
     }
 
+    /// Pulse the enable pin
     fn pulse_enable(&mut self) -> Result<(), Error<I2C_ERR>> {
         self.register.set_gpio(ENABLE_PIN, Level::Low)?;
         self.delay.borrow_mut().delay_us(1);
@@ -246,12 +352,17 @@ where
 
         Ok(())
     }
+}
 
-    // ------------------ high level commands ---------------------
-
-    pub fn print(&mut self, text: &str) -> Result<(), Error<I2C_ERR>> {
-        for c in text.chars() {
-            self.write_data(c as u8)?;
+/// Implement the `core::fmt::Write` trait for the LCD backpack, allowing it to be used with the `write!` macro.
+impl<I2C, I2C_ERR, D> core::fmt::Write for LcdBackpack<I2C, D>
+where
+    I2C: Write<Error = I2C_ERR> + WriteRead<Error = I2C_ERR>,
+    D: DelayMs<u16> + DelayUs<u16>,
+{
+    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+        if let Err(_error) = self.print(s) {
+            return Err(core::fmt::Error);
         }
         Ok(())
     }
