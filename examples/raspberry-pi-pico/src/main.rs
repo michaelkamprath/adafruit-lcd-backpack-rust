@@ -67,6 +67,9 @@ fn main() -> ! {
 
     // create the LEA backpack object
     let mut lcd_backpack = LcdBackpack::new(i2c, delay);
+    if let Err(_e) = lcd_backpack.init() {
+        panic!("Error initializing LCD");
+    }
 
     loop {
         if let Err(_e) = write_lcd_sequence(&mut lcd_backpack) {
