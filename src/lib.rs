@@ -65,9 +65,6 @@ const LCD_FLAG_5x10_DOTS: u8 = 0x04; //  10 pixel high font mode
 const LCD_FLAG_5x8_DOTS: u8 = 0x00; //  8 pixel high font mode
 
 pub struct LcdBackpack<I2C, D> {
-    #[cfg(feature = "shared_i2c")]
-    register: Mcp230xx<I2C, Mcp23008>,
-    #[cfg(not(feature = "shared_i2c"))]
     register: Mcp230xx<I2C, Mcp23008>,
     #[cfg(feature = "shared_i2c")]
     delay: Rc<RefCell<D>>,
