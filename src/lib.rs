@@ -64,6 +64,38 @@ const LCD_FLAG_1LINE: u8 = 0x00; //  LCD 1 line mode
 const LCD_FLAG_5x10_DOTS: u8 = 0x04; //  10 pixel high font mode
 const LCD_FLAG_5x8_DOTS: u8 = 0x00; //  8 pixel high font mode
 
+pub enum LcdDisplayType {
+    Lcd20x4 ,
+    Lcd20x2,
+    Lcd16x2,
+}
+
+impl LcdDisplayType {
+    const fn rows(&self) -> u8 {
+        match self {
+            LcdDisplayType::Lcd20x4 => 4,
+            LcdDisplayType::Lcd20x2 => 2,
+            LcdDisplayType::Lcd16x2 => 2,
+        }
+    }
+
+    const fn cols(&self) -> u8 {
+        match self {
+            LcdDisplayType::Lcd20x4 => 20,
+            LcdDisplayType::Lcd20x2 => 20,
+            LcdDisplayType::Lcd16x2 => 16,
+        }
+    }
+
+    const fn row_offsets(&self) -> [u8; 4] {
+        match self {
+            LcdDisplayType::Lcd20x4 => [0x00, 0x40, 0x14, 0x54],
+            LcdDisplayType::Lcd20x2 => [0x00, 0x40, 0x00, 0x40],
+            LcdDisplayType::Lcd16x2 => [0x00, 0x40, 0x10, 0x50],
+        }
+    }
+}
+
 pub struct LcdBackpack<I2C, D> {
     #[cfg(feature = "shared_i2c")]
     register: Mcp230xx<I2C, Mcp23008>,
@@ -73,6 +105,7 @@ pub struct LcdBackpack<I2C, D> {
     delay: Rc<RefCell<D>>,
     #[cfg(not(feature = "shared_i2c"))]
     delay: D,
+    lcd_type: LcdDisplayType,
     display_function: u8,
     display_control: u8,
     display_mode: u8,
@@ -86,6 +119,8 @@ pub enum Error<I2C_ERR> {
     InterruptPinError,
     /// Row is out of range
     RowOutOfRange,
+    /// Column is out of range
+    ColumnOutOfRange,
 }
 
 impl<I2C_ERR> From<I2C_ERR> for Error<I2C_ERR> {
@@ -110,19 +145,19 @@ where
 {
     /// Create a new LCD backpack with the default I2C address of 0x20
     #[cfg(feature = "shared_i2c")]
-    pub fn new(i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>) -> Self {
-        Self::new_with_address(i2c, delay, 0x20)
+    pub fn new(lcd_type: LcdDisplayType, i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>) -> Self {
+        Self::new_with_address(lcd_type, i2c, delay, 0x20)
     }
 
     /// Create a new LCD backpack with the default I2C address of 0x20
     #[cfg(not(feature = "shared_i2c"))]
-    pub fn new(i2c: I2C, delay: D) -> Self {
-        Self::new_with_address(i2c, delay, 0x20)
+    pub fn new(lcd_type: LcdDisplayType, i2c: I2C, delay: D) -> Self {
+        Self::new_with_address(lcd_type, i2c, delay, 0x20)
     }
 
     /// Create a new LCD backpack with the specified I2C address
     #[cfg(feature = "shared_i2c")]
-    pub fn new_with_address(i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>, address: u8) -> Self {
+    pub fn new_with_address(lcd_type: LcdDisplayType, i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>, address: u8) -> Self {
         let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
             Ok(r) => r,
             Err(_) => panic!("Could not create MCP23008"),
@@ -131,6 +166,7 @@ where
         Self {
             register,
             delay: delay.clone(),
+            lcd_type,
             display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
             display_control: LCD_FLAG_DISPLAYON | LCD_FLAG_CURSOROFF | LCD_FLAG_BLINKOFF,
             display_mode: LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT,
@@ -139,7 +175,7 @@ where
 
     /// Create a new LCD backpack with the specified I2C address
     #[cfg(not(feature = "shared_i2c"))]
-    pub fn new_with_address(i2c: I2C, delay: D, address: u8) -> Self {
+    pub fn new_with_address(lcd_type: LcdDisplayType, i2c: I2C, delay: D, address: u8) -> Self {
         let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
             Ok(r) => r,
             Err(_) => panic!("Could not create MCP23008"),
@@ -148,6 +184,7 @@ where
         Self {
             register,
             delay,
+            lcd_type,
             display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
             display_control: LCD_FLAG_DISPLAYON | LCD_FLAG_CURSOROFF | LCD_FLAG_BLINKOFF,
             display_mode: LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT,
@@ -228,11 +265,14 @@ where
 
     /// Set the cursor position at specified column and row
     pub fn set_cursor(&mut self, col: u8, row: u8) -> Result<&mut Self, Error<I2C_ERR>> {
-        let row_offsets = [0x00, 0x40, 0x10, 0x50]; // TODO: make this configurable
-        if row > row_offsets.len() as u8 {
+        if row >= self.lcd_type.rows() {
             return Err(Error::RowOutOfRange);
         }
-        self.send_command(LCD_CMD_SETDDRAMADDR | (col + row_offsets[row as usize]))?;
+        if col >= self.lcd_type.cols() {
+            return Err(Error::ColumnOutOfRange);
+        }
+
+        self.send_command(LCD_CMD_SETDDRAMADDR | (col + self.lcd_type.row_offsets()[row as usize]))?;
         Ok(self)
     }
 

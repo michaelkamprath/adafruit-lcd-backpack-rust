@@ -4,7 +4,7 @@ use rp_pico::entry;
 use rp_pico::hal::{
     prelude::*, fugit::HertzU32, gpio
 };
-use adafruit_lcd_backpack::{LcdBackpack, Error};
+use adafruit_lcd_backpack::{LcdBackpack, LcdDisplayType, Error};
 use core::fmt::Write;
 use embedded_hal::{
     blocking::delay::{DelayMs, DelayUs},
@@ -66,7 +66,7 @@ fn main() -> ! {
     );
 
     // create the LEA backpack object
-    let mut lcd_backpack = LcdBackpack::new(i2c, delay);
+    let mut lcd_backpack = LcdBackpack::new(LcdDisplayType::Lcd16x2, i2c, delay);
     if let Err(_e) = lcd_backpack.init() {
         panic!("Error initializing LCD");
     }
