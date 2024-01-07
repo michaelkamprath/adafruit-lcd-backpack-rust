@@ -1,18 +1,16 @@
 #![no_std]
 #![no_main]
-use rp_pico::entry;
-use rp_pico::hal::{
-    prelude::*, fugit::HertzU32, gpio
-};
-use adafruit_lcd_backpack::{LcdBackpack, LcdDisplayType, Error};
+use adafruit_lcd_backpack::{Error, LcdBackpack, LcdDisplayType};
 use core::fmt::Write;
+use defmt::{error, panic};
+use defmt_rtt as _;
 use embedded_hal::{
     blocking::delay::{DelayMs, DelayUs},
     blocking::i2c,
 };
 use panic_probe as _;
-use defmt_rtt as _;
-
+use rp_pico::entry;
+use rp_pico::hal::{fugit::HertzU32, gpio, prelude::*};
 
 #[entry]
 fn main() -> ! {
@@ -50,13 +48,10 @@ fn main() -> ! {
 
     // The delay object lets us wait for specified amounts of time. Wrap it in a
     // RefCell so we can share it between the main loop and other functions.
-    let delay = cortex_m::delay::Delay::new(
-        core.SYST,
-        clocks.system_clock.freq().to_Hz(),
-    );
+    let delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
 
     // set up I2C. Also wrap it in a RefCell so we can share it between the main loop and other functions.
-    let i2c =  rp_pico::hal::I2C::new_controller(
+    let i2c = rp_pico::hal::I2C::new_controller(
         pac.I2C0,
         pins.gpio4.into_function::<gpio::FunctionI2c>(),
         pins.gpio5.into_function::<gpio::FunctionI2c>(),
@@ -67,29 +62,35 @@ fn main() -> ! {
 
     // create the LEA backpack object
     let mut lcd_backpack = LcdBackpack::new(LcdDisplayType::Lcd16x2, i2c, delay);
-    if let Err(_e) = lcd_backpack.init() {
-        panic!("Error initializing LCD");
+    if let Err(e) = lcd_backpack.init() {
+        panic!("Error initializing LCD: {}", e);
     }
 
     loop {
-        if let Err(_e) = write_lcd_sequence(&mut lcd_backpack) {
-            panic!("Error writing to LCD");
+        if let Err(e) = write_lcd_sequence(&mut lcd_backpack) {
+            error!("Error writing to LCD: {}", e);
         }
     }
 }
 
 #[allow(non_camel_case_types)]
-fn write_lcd_sequence<TWI, TWI_ERR, DELAY>(lcd: &mut LcdBackpack<TWI, DELAY>) -> Result<(), Error<TWI_ERR>>
+fn write_lcd_sequence<TWI, TWI_ERR, DELAY>(
+    lcd: &mut LcdBackpack<TWI, DELAY>,
+) -> Result<(), Error<TWI_ERR>>
 where
     TWI: i2c::Write<Error = TWI_ERR> + i2c::WriteRead<Error = TWI_ERR>,
     DELAY: DelayMs<u16> + DelayUs<u16> + DelayMs<u8>,
 {
     // clear the display;
-    write!(lcd.clear()?.home()?, "Hello, world!").expect("Error writing to LCD");
+    if let Err(core::fmt::Error) = write!(lcd.clear()?.home()?, "Hello, world!") {
+        error!("Error writing to LCD");
+    }
     // wait 1 second
     lcd.delay().delay_ms(2000u16);
     // clear the display
-    write!(lcd.set_cursor(0,1)?, "I'm LCD Backpack").expect("Error writing to LCD");
+    if let Err(core::fmt::Error) = write!(lcd.set_cursor(0, 1)?, "I'm LCD Backpack") {
+        error!("Error writing to LCD");
+    }
     // wait 1 second
     lcd.delay().delay_ms(2000u16);
     // clear the display

@@ -1,13 +1,13 @@
 //! Rust driver for the [Adafruit I2C LCD backpack](https://www.adafruit.com/product/292) with MCP23008 GPIO expander
-//! 
+//!
 //! _NOTE: This library is not made by Adafruit, and is not supported by them. The use of the Adafruit name
 //! is for compatibility identification purposes only._
-//! 
+//!
 //! ## Overview
-//! This crate provides a driver for the Adafruit I2C LCD backpack with MCP23008 GPIO expander. It is designed to be used with the 
+//! This crate provides a driver for the Adafruit I2C LCD backpack with MCP23008 GPIO expander. It is designed to be used with the
 //! [embedded-hal](https://docs.rs/embedded-hal/latest/embedded_hal/index.html) traits for embeded systems. It supports standard
 //! HD44780 based LCD displays.
-//! 
+//!
 //! ## Features
 //! The feature `shared_i2c` can be enabled to allow the I2C bus to be shared with other devices. This is useful for devices like the
 //! Raspberry Pi Pico that have a single I2C bus. When this feature is enabled, the I2C bus is wrapped in an `Rc<RefCell<_>>` and
@@ -17,7 +17,7 @@
 //! ## Usage
 //! To create a new LCD backpack, use the `new` method. This will return a new LCD backpack object. Pass it the type of LCD display you
 //! are using, the I2C bus, and the delay object. Both the I2C Bus and Delay objects must implement the relevant embedded-hal traits.
-//! 
+//!
 //! ```rust
 //! // The embedded-hal traits are used to define the I2C bus and delay objects
 //! use embedded_hal::{
@@ -25,16 +25,16 @@
 //!     blocking::i2c::{Write, WriteRead},
 //! };
 //! use lcd_backpack::{LcdBackpack, LcdDisplayType};
-//! 
+//!
 //! // create the I2C bus per your platform
 //! let i2c = ...;
-//! 
+//!
 //! // create the delay object per your platform
 //! let delay = ...;
-//! 
+//!
 //! // create the LCD backpack
 //! let mut lcd = LcdBackpack::new(LcdDisplayType::Lcd16x2, i2c, delay);
-//! 
+//!
 //! // initialize the LCD
 //! if let Err(_e) = lcd.init() {
 //!    panic!("Error initializing LCD");
@@ -43,7 +43,7 @@
 //! This library supports the `core::fmt::Write` trait, allowing it to be used with the `write!` macro. For example:
 //! ```rust
 //! use core::fmt::Write;
-//! 
+//!
 //! // write a string to the LCD
 //! if let Err(_e) = write!(lcd, "Hello, world!") {
 //!   panic!("Error writing to LCD");
@@ -51,7 +51,7 @@
 //! ```
 //! The various methods for controlling the LCD are also available. Each returns a `Result` that wraps the LCD backpack object. This
 //! allows you to chain the methods together. For example:
-//! 
+//!
 //! ```rust
 //! // clear the display and home the cursor before writing a string
 //! if let Err(_e) = write!(lcd.clear()?.home()?, "Hello, world!") {
@@ -62,35 +62,35 @@
 //! If you are using a platform with a single I2C bus, you can enable the `shared_i2c` feature to allow the I2C bus to be shared with
 //! other devices and sensors. That is, the I2C bus is wrapped in an `Rc<RefCell<_>>` and passed to the LCD backpack, meaning the
 //! I2C bus object is not moved into the LCD backpack during initialization. Doing this requires that your project have an allocator
-//! defined, such as [`embedded_alloc`](https://github.com/rust-embedded/embedded-alloc), allowing the use of the alloc::rc::Rc and 
+//! defined, such as [`embedded_alloc`](https://github.com/rust-embedded/embedded-alloc), allowing the use of the alloc::rc::Rc and
 //! core::cell::RefCell types.
-//! 
+//!
 //! When using the `shared_i2c` feature, the initial setup now looks like this (ignoring the creation of the allocator):
-//! 
+//!
 //! ```rust
 //! // The embedded-hal traits are used to define the I2C bus and delay objects
 //! use embedded_hal::{
 //!    blocking::delay::{DelayMs, DelayUs},
 //!    blocking::i2c::{Write, WriteRead},
 //! };
-//! 
+//!
 //! // The alloc crate is used to define the Rc and RefCell types
 //! use alloc::rc::Rc;
 //! use core::cell::RefCell;
-//! 
+//!
 //! use lcd_backpack::{LcdBackpack, LcdDisplayType};
-//! 
+//!
 //! // create the I2C bus per your platform
 //! let i2c = ...;
 //! let i2c = Rc::new(RefCell::new(i2c));
-//! 
+//!
 //! // create the delay object per your platform
 //! let delay = ...;
 //! let delay = Rc::new(RefCell::new(delay));
-//! 
+//!
 //! // create the LCD backpack
 //! let mut lcd = LcdBackpack::new(LcdDisplayType::Lcd16x2, &i2c, &delay);
-//! 
+//!
 //! // initialize the LCD
 //! if let Err(_e) = lcd.init() {
 //!   panic!("Error initializing LCD");
@@ -135,11 +135,10 @@ const LCD_CMD_SETCGRAMADDR: u8 = 0x40; //  Used to set the CGRAM (character gene
 const LCD_CMD_SETDDRAMADDR: u8 = 0x80; //  Used to set the DDRAM (Display Data RAM)
 
 // flags for display entry mode
-const LCD_FLAG_ENTRYRIGHT: u8 = 0x00;//  Used to set text to flow from right to left
+const LCD_FLAG_ENTRYRIGHT: u8 = 0x00; //  Used to set text to flow from right to left
 const LCD_FLAG_ENTRYLEFT: u8 = 0x02; //  Uset to set text to flow from left to right
 const LCD_FLAG_ENTRYSHIFTINCREMENT: u8 = 0x01; //  Used to 'right justify' text from the cursor
 const LCD_FLAG_ENTRYSHIFTDECREMENT: u8 = 0x00; //  Used to 'left justify' text from the cursor
-
 
 // flags for display on/off control
 const LCD_FLAG_DISPLAYON: u8 = 0x04; //  Turns the display on
@@ -192,7 +191,7 @@ impl LcdDisplayType {
         }
     }
 
-    /// Get the row offsets for the display type. This always returns an array of length 4. 
+    /// Get the row offsets for the display type. This always returns an array of length 4.
     /// For displays with less than 4 rows, the unused rows will be set to offsets offscreen.
     const fn row_offsets(&self) -> [u8; 4] {
         match self {
@@ -242,6 +241,21 @@ impl<I2C_ERR> From<mcp230xx::Error<I2C_ERR>> for Error<I2C_ERR> {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl<I2C_ERR> defmt::Format for Error<I2C_ERR>
+where
+    I2C_ERR: defmt::Format,
+{
+    fn format(&self, fmt: defmt::Formatter) {
+        match self {
+            Error::I2cError(e) => defmt::write!(fmt, "I2C error: {:?}", e),
+            Error::InterruptPinError => defmt::write!(fmt, "Interrupt pin not found"),
+            Error::RowOutOfRange => defmt::write!(fmt, "Row out of range"),
+            Error::ColumnOutOfRange => defmt::write!(fmt, "Column out of range"),
+        }
+    }
+}
+
 impl<I2C, I2C_ERR, D> LcdBackpack<I2C, D>
 where
     I2C: Write<Error = I2C_ERR> + WriteRead<Error = I2C_ERR>,
@@ -261,7 +275,12 @@ where
 
     /// Create a new LCD backpack with the specified I2C address
     #[cfg(feature = "shared_i2c")]
-    pub fn new_with_address(lcd_type: LcdDisplayType, i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>, address: u8) -> Self {
+    pub fn new_with_address(
+        lcd_type: LcdDisplayType,
+        i2c: &Rc<RefCell<I2C>>,
+        delay: &Rc<RefCell<D>>,
+        address: u8,
+    ) -> Self {
         let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
             Ok(r) => r,
             Err(_) => panic!("Could not create MCP23008"),
@@ -341,7 +360,7 @@ where
 
         // set up the display
         self.send_command(LCD_CMD_FUNCTIONSET | self.display_function)?;
-        self.send_command(LCD_CMD_DISPLAYCONTROL |  self.display_control)?;
+        self.send_command(LCD_CMD_DISPLAYCONTROL | self.display_control)?;
         self.send_command(LCD_CMD_ENTRYMODESET | self.display_mode)?;
         self.clear()?;
         self.home()?;
@@ -376,7 +395,9 @@ where
             return Err(Error::ColumnOutOfRange);
         }
 
-        self.send_command(LCD_CMD_SETDDRAMADDR | (col + self.lcd_type.row_offsets()[row as usize]))?;
+        self.send_command(
+            LCD_CMD_SETDDRAMADDR | (col + self.lcd_type.row_offsets()[row as usize]),
+        )?;
         Ok(self)
     }
 

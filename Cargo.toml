@@ -18,9 +18,12 @@ bench = false
 
 [dependencies]
 embedded-hal = "0.2"
-# The shared_i2c feature of mcp230xx is not yet released, so we need to use a git dependency. 
+# The shared_i2c feature of mcp230xx is not yet released, so we need to use a git dependency.
 # This PR adds the feature: https://github.com/quartiq/mcp230xx/pull/6
 mcp230xx = { git = "https://github.com/michaelkamprath/mcp230xx.git", branch = "rc_i2c", version = "0.2" }
+# The defmt feature is optional, enabling formatters for defmt logging.
+defmt = { version = "0.3", optional = true }
 
 [features]
 shared_i2c = ["mcp230xx/shared_i2c"]
+defmt = ["dep:defmt"]
