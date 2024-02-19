@@ -204,9 +204,6 @@ impl LcdDisplayType {
 
 pub struct LcdBackpack<I2C, D> {
     register: Mcp230xx<I2C, Mcp23008>,
-    #[cfg(feature = "shared_i2c")]
-    delay: Rc<RefCell<D>>,
-    #[cfg(not(feature = "shared_i2c"))]
     delay: D,
     lcd_type: LcdDisplayType,
     display_function: u8,
@@ -224,6 +221,9 @@ pub enum Error<I2C_ERR> {
     RowOutOfRange,
     /// Column is out of range
     ColumnOutOfRange,
+    /// Formatting error
+    #[cfg(feature = "defmt")]
+    FormattingError,
 }
 
 impl<I2C_ERR> From<I2C_ERR> for Error<I2C_ERR> {
@@ -252,6 +252,7 @@ where
             Error::InterruptPinError => defmt::write!(fmt, "Interrupt pin not found"),
             Error::RowOutOfRange => defmt::write!(fmt, "Row out of range"),
             Error::ColumnOutOfRange => defmt::write!(fmt, "Column out of range"),
+            Error::FormattingError => defmt::write!(fmt, "Formatting error"),
         }
     }
 }
@@ -263,7 +264,7 @@ where
 {
     /// Create a new LCD backpack with the default I2C address of 0x20
     #[cfg(feature = "shared_i2c")]
-    pub fn new(lcd_type: LcdDisplayType, i2c: &Rc<RefCell<I2C>>, delay: &Rc<RefCell<D>>) -> Self {
+    pub fn new(lcd_type: LcdDisplayType, i2c: &Rc<RefCell<I2C>>, delay: D) -> Self {
         Self::new_with_address(lcd_type, i2c, delay, 0x20)
     }
 
@@ -278,7 +279,7 @@ where
     pub fn new_with_address(
         lcd_type: LcdDisplayType,
         i2c: &Rc<RefCell<I2C>>,
-        delay: &Rc<RefCell<D>>,
+        delay: D,
         address: u8,
     ) -> Self {
         let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
@@ -288,7 +289,7 @@ where
 
         Self {
             register,
-            delay: delay.clone(),
+            delay: delay,
             lcd_type,
             display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
             display_control: LCD_FLAG_DISPLAYON | LCD_FLAG_CURSOROFF | LCD_FLAG_BLINKOFF,
@@ -314,13 +315,6 @@ where
         }
     }
 
-    #[cfg(feature = "shared_i2c")]
-    /// Get a mutable reference to the shared delay object.
-    pub fn delay(&self) -> core::cell::RefMut<'_, D> {
-        self.delay.borrow_mut()
-    }
-
-    #[cfg(not(feature = "shared_i2c"))]
     /// Get a mutable reference to the delay object. This is useful as the delay objectis moved into the LCD backpack during initialization.
     pub fn delay(&mut self) -> &mut D {
         &mut self.delay
