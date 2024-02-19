@@ -8,12 +8,6 @@
 //! [embedded-hal](https://docs.rs/embedded-hal/latest/embedded_hal/index.html) traits for embeded systems. It supports standard
 //! HD44780 based LCD displays.
 //!
-//! ## Features
-//! The feature `shared_i2c` can be enabled to allow the I2C bus to be shared with other devices. This is useful for devices like the
-//! Raspberry Pi Pico that have a single I2C bus. When this feature is enabled, the I2C bus is wrapped in an `Rc<RefCell<_>>` and
-//! passed to the LCD backpack. When this feature is not enabled, the I2C bus is passed directly to the LCD backpack and consumed during
-//! initialization.
-//!
 //! ## Usage
 //! To create a new LCD backpack, use the `new` method. This will return a new LCD backpack object. Pass it the type of LCD display you
 //! are using, the I2C bus, and the delay object. Both the I2C Bus and Delay objects must implement the relevant embedded-hal traits.
@@ -58,55 +52,9 @@
 //!  panic!("Error writing to LCD");
 //! }
 //! ```
-//! ### Shared I2C Bus
-//! If you are using a platform with a single I2C bus, you can enable the `shared_i2c` feature to allow the I2C bus to be shared with
-//! other devices and sensors. That is, the I2C bus is wrapped in an `Rc<RefCell<_>>` and passed to the LCD backpack, meaning the
-//! I2C bus object is not moved into the LCD backpack during initialization. Doing this requires that your project have an allocator
-//! defined, such as [`embedded_alloc`](https://github.com/rust-embedded/embedded-alloc), allowing the use of the alloc::rc::Rc and
-//! core::cell::RefCell types.
-//!
-//! When using the `shared_i2c` feature, the initial setup now looks like this (ignoring the creation of the allocator):
-//!
-//! ```rust
-//! // The embedded-hal traits are used to define the I2C bus and delay objects
-//! use embedded_hal::{
-//!    blocking::delay::{DelayMs, DelayUs},
-//!    blocking::i2c::{Write, WriteRead},
-//! };
-//!
-//! // The alloc crate is used to define the Rc and RefCell types
-//! use alloc::rc::Rc;
-//! use core::cell::RefCell;
-//!
-//! use lcd_backpack::{LcdBackpack, LcdDisplayType};
-//!
-//! // create the I2C bus per your platform
-//! let i2c = ...;
-//! let i2c = Rc::new(RefCell::new(i2c));
-//!
-//! // create the delay object per your platform
-//! let delay = ...;
-//! let delay = Rc::new(RefCell::new(delay));
-//!
-//! // create the LCD backpack
-//! let mut lcd = LcdBackpack::new(LcdDisplayType::Lcd16x2, &i2c, &delay);
-//!
-//! // initialize the LCD
-//! if let Err(_e) = lcd.init() {
-//!   panic!("Error initializing LCD");
-//! }
-//! ```
 
 #![no_std]
 #![allow(dead_code, non_camel_case_types, non_upper_case_globals)]
-
-#[cfg(feature = "shared_i2c")]
-extern crate alloc;
-
-#[cfg(feature = "shared_i2c")]
-use alloc::rc::Rc;
-#[cfg(feature = "shared_i2c")]
-use core::cell::RefCell;
 use embedded_hal::{
     blocking::delay::{DelayMs, DelayUs},
     blocking::i2c::{Write, WriteRead},
@@ -263,42 +211,11 @@ where
     D: DelayMs<u16> + DelayUs<u16>,
 {
     /// Create a new LCD backpack with the default I2C address of 0x20
-    #[cfg(feature = "shared_i2c")]
-    pub fn new(lcd_type: LcdDisplayType, i2c: &Rc<RefCell<I2C>>, delay: D) -> Self {
-        Self::new_with_address(lcd_type, i2c, delay, 0x20)
-    }
-
-    /// Create a new LCD backpack with the default I2C address of 0x20
-    #[cfg(not(feature = "shared_i2c"))]
     pub fn new(lcd_type: LcdDisplayType, i2c: I2C, delay: D) -> Self {
         Self::new_with_address(lcd_type, i2c, delay, 0x20)
     }
 
     /// Create a new LCD backpack with the specified I2C address
-    #[cfg(feature = "shared_i2c")]
-    pub fn new_with_address(
-        lcd_type: LcdDisplayType,
-        i2c: &Rc<RefCell<I2C>>,
-        delay: D,
-        address: u8,
-    ) -> Self {
-        let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
-            Ok(r) => r,
-            Err(_) => panic!("Could not create MCP23008"),
-        };
-
-        Self {
-            register,
-            delay: delay,
-            lcd_type,
-            display_function: LCD_FLAG_4BITMODE | LCD_FLAG_5x8_DOTS | LCD_FLAG_2LINE,
-            display_control: LCD_FLAG_DISPLAYON | LCD_FLAG_CURSOROFF | LCD_FLAG_BLINKOFF,
-            display_mode: LCD_FLAG_ENTRYLEFT | LCD_FLAG_ENTRYSHIFTDECREMENT,
-        }
-    }
-
-    /// Create a new LCD backpack with the specified I2C address
-    #[cfg(not(feature = "shared_i2c"))]
     pub fn new_with_address(lcd_type: LcdDisplayType, i2c: I2C, delay: D, address: u8) -> Self {
         let register = match Mcp230xx::<I2C, Mcp23008>::new(i2c, address) {
             Ok(r) => r,
