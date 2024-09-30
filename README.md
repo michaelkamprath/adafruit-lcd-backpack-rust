@@ -1,5 +1,9 @@
 # adafruit-lcd-backpack
 
+## THIS LIBRARY IS NO LONGER MAINTAINED
+This library has not been updated to be compatible with `embedded-hal` version 1.0.0 and later. It is recommended to use the [`i2c-character-display`](https://crates.io/crates/i2c-character-display) driver instead ([repository](https://github.com/michaelkamprath/i2c-character-display)), which is compatible with `embedded-hal` version 1.0.0 and later and supports the Adafruit I2C LCD backpack plus other I2C character displays.
+
+---
 <!-- cargo-sync-readme start -->
 
 Rust driver for the [Adafruit I2C LCD backpack](https://www.adafruit.com/product/292) with MCP23008 GPIO expander
